@@ -140,9 +140,10 @@ class CanopyState(
         screen = Screen.Chat
     }
 
-    fun togglePin(conversation: Conversation = selectedConversation ?: return) {
-        conversation.pinned = !conversation.pinned
-        showNotice(if (conversation.pinned) "Pinned" else "Unpinned")
+    fun togglePin(conversation: Conversation? = null) {
+        val conv = conversation ?: selectedConversation ?: return
+        conv.pinned = !conv.pinned
+        showNotice(if (conv.pinned) "Pinned" else "Unpinned")
     }
 
     fun renameSelected() {
