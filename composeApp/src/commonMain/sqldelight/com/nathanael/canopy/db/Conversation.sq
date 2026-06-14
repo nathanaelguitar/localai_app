@@ -1,0 +1,41 @@
+import kotlin.Boolean;
+
+CREATE TABLE ConversationEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    title TEXT NOT NULL,
+    preview TEXT NOT NULL,
+    workspace_id TEXT NOT NULL,
+    pinned INTEGER AS Boolean NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+
+selectAll:
+SELECT * FROM ConversationEntity ORDER BY updated_at DESC;
+
+selectByWorkspace:
+SELECT * FROM ConversationEntity
+WHERE workspace_id = ?
+ORDER BY pinned DESC, updated_at DESC;
+
+selectById:
+SELECT * FROM ConversationEntity WHERE id = ?;
+
+insert:
+INSERT OR REPLACE INTO ConversationEntity(id, title, preview, workspace_id, pinned, created_at, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+updateTitle:
+UPDATE ConversationEntity SET title = ?, updated_at = ? WHERE id = ?;
+
+updatePreview:
+UPDATE ConversationEntity SET preview = ?, updated_at = ? WHERE id = ?;
+
+updatePinned:
+UPDATE ConversationEntity SET pinned = ?, updated_at = ? WHERE id = ?;
+
+deleteById:
+DELETE FROM ConversationEntity WHERE id = ?;
+
+deleteAll:
+DELETE FROM ConversationEntity;

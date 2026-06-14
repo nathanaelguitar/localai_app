@@ -1,0 +1,26 @@
+CREATE TABLE ChatMessageEntity (
+    id TEXT NOT NULL PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    sort_order INTEGER NOT NULL,
+    FOREIGN KEY (conversation_id) REFERENCES ConversationEntity(id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_message_conversation ON ChatMessageEntity(conversation_id, sort_order);
+
+selectByConversation:
+SELECT * FROM ChatMessageEntity
+WHERE conversation_id = ?
+ORDER BY sort_order ASC;
+
+insert:
+INSERT OR REPLACE INTO ChatMessageEntity(id, conversation_id, role, text, created_at, sort_order)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteByConversation:
+DELETE FROM ChatMessageEntity WHERE conversation_id = ?;
+
+maxSortOrder:
+SELECT COALESCE(MAX(sort_order), 0) FROM ChatMessageEntity WHERE conversation_id = ?;

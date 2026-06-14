@@ -23,7 +23,7 @@ fun OnboardingScreen(state: CanopyState) {
     val pages = listOf(
         Triple("Canopy", "AI workspace with an oak-rooted visual identity.", "Not a generic chatbot clone. It is organized around workspaces, workflows, and premium product texture."),
         Triple("Work in branches", "Separate deals, finance research, and career prep.", "Each workspace has pinned threads, saved workflows, and its own context surface."),
-        Triple("Backend-ready", "The demo assistant is local and fake by design.", "Replace DemoChatRepository with your API client when your model/provider is ready.")
+        Triple("Private AI", "Runs on-device with Gemma 4 E2B.", "Your data never leaves the device. Download the model once and use Canopy anywhere, with or without internet.")
     )
     val page = pages[state.onboardingStep]
 

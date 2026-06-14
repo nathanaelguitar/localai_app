@@ -1,0 +1,16 @@
+CREATE TABLE SettingsEntity (
+    key TEXT NOT NULL PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+get:
+SELECT value FROM SettingsEntity WHERE key = ?;
+
+set:
+INSERT OR REPLACE INTO SettingsEntity(key, value) VALUES (?, ?);
+
+delete:
+DELETE FROM SettingsEntity WHERE key = ?;
+
+getAll:
+SELECT * FROM SettingsEntity;

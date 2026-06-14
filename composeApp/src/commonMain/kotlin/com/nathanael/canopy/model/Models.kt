@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 
 sealed class Screen {
     data object Onboarding : Screen()
+    data object ModelDownload : Screen()
     data object Home : Screen()
     data object Chat : Screen()
     data object Workflows : Screen()

@@ -1,12 +1,13 @@
 package com.nathanael.canopy.state
 
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.nathanael.canopy.data.ChatRepository
+import com.nathanael.canopy.data.DatabaseRepository
 import com.nathanael.canopy.data.DemoChatRepository
+import com.nathanael.canopy.data.ModelManager
 import com.nathanael.canopy.model.ChatMessage
 import com.nathanael.canopy.model.Conversation
 import com.nathanael.canopy.model.Persona
@@ -18,7 +19,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 class CanopyState(
-    private val repository: ChatRepository = DemoChatRepository()
+    private val repository: ChatRepository = DemoChatRepository(),
+    private val dbRepo: DatabaseRepository? = null,
+    val modelManager: ModelManager? = null
 ) {
     var screen by mutableStateOf<Screen>(Screen.Onboarding)
     var selectedConversationId by mutableStateOf("venture-brief")
@@ -27,10 +30,10 @@ class CanopyState(
     var composerText by mutableStateOf("")
     var notice by mutableStateOf("")
     var isDark by mutableStateOf(true)
-    var providerName by mutableStateOf("Local Demo")
-    var endpoint by mutableStateOf("https://your-api.example.com/chat")
-    var apiKeyLabel by mutableStateOf("Not connected")
-    var onboardingStep by mutableIntStateOf(0)
+    var providerName by mutableStateOf("Local LLM")
+    var endpoint by mutableStateOf("")
+    var apiKeyLabel by mutableStateOf("On-device")
+    var onboardingStep by mutableStateOf(0)
 
     val workspaces = listOf(
         Workspace("ventures", "Ventures", "Deals, startups, and messy commercial ideas"),
@@ -68,7 +71,7 @@ class CanopyState(
     val conversations = mutableStateListOf<Conversation>()
 
     init {
-        seedConversations()
+        loadFromDatabase()
     }
 
     val selectedWorkspace: Workspace
@@ -111,7 +114,16 @@ class CanopyState(
     }
 
     fun nextOnboardingStep() {
-        if (onboardingStep < 2) onboardingStep++ else goHome()
+        if (onboardingStep < 2) {
+            onboardingStep++
+        } else {
+            dbRepo?.setOnboardingCompleted()
+            if (modelManager != null && modelManager.status == com.nathanael.canopy.data.ModelStatus.NotDownloaded) {
+                screen = Screen.ModelDownload
+            } else {
+                goHome()
+            }
+        }
     }
 
     fun previousOnboardingStep() {
@@ -128,40 +140,51 @@ class CanopyState(
             workspaceId = workspaceId,
             pinned = false
         )
-        conversation.messages += ChatMessage(
+        val initialMessage = ChatMessage(
             id = nextId("assistant"),
             role = Role.Assistant,
             text = "Canopy is ready. Pick a workflow, paste context, or ask directly."
         )
+        conversation.messages += initialMessage
         conversations.add(0, conversation)
         selectedWorkspaceId = workspaceId
         selectedConversationId = conversation.id
         composerText = ""
         screen = Screen.Chat
+
+        dbRepo?.saveConversation(conversation)
+        dbRepo?.saveMessage(conversation.id, initialMessage)
     }
 
     fun togglePin(conversation: Conversation? = null) {
         val conv = conversation ?: selectedConversation ?: return
         conv.pinned = !conv.pinned
         showNotice(if (conv.pinned) "Pinned" else "Unpinned")
+        dbRepo?.updateConversationPinned(conv.id, conv.pinned)
     }
 
     fun renameSelected() {
         val conversation = selectedConversation ?: return
         conversation.title = smartTitle(conversation.messages.lastOrNull()?.text ?: conversation.title)
         showNotice("Title refreshed")
+        dbRepo?.updateConversationTitle(conversation.id, conversation.title)
     }
 
     fun clearSelectedChat() {
         val conversation = selectedConversation ?: return
         conversation.messages.clear()
-        conversation.messages += ChatMessage(
+        val clearMessage = ChatMessage(
             id = nextId("assistant"),
             role = Role.Assistant,
-            text = "Thread cleared. Your backend can replace this local state later."
+            text = "Thread cleared. Start a new conversation."
         )
+        conversation.messages += clearMessage
         conversation.preview = "Thread cleared"
         showNotice("Thread cleared")
+
+        dbRepo?.clearMessages(conversation.id)
+        dbRepo?.saveMessage(conversation.id, clearMessage)
+        dbRepo?.updateConversationPreview(conversation.id, conversation.preview)
     }
 
     fun useWorkflow(workflow: Workflow) {
@@ -172,14 +195,21 @@ class CanopyState(
     }
 
     fun testConnection() {
-        showNotice("Demo only. Replace DemoChatRepository with your backend client.")
+        if (modelManager != null) {
+            showNotice("Model status: ${modelManager.status.name}")
+        } else {
+            showNotice("Demo mode. No model loaded.")
+        }
     }
 
     fun saveSettings() {
-        val label = providerName.ifBlank { "Custom Provider" }
+        val label = providerName.ifBlank { "Local LLM" }
         providerName = label
-        apiKeyLabel = "Configured locally"
-        showNotice("Settings saved locally")
+        apiKeyLabel = if (modelManager?.status == com.nathanael.canopy.data.ModelStatus.Ready) "Model loaded" else "On-device"
+        showNotice("Settings saved")
+
+        dbRepo?.setSetting("is_dark", isDark.toString())
+        dbRepo?.setSetting("provider_name", providerName)
     }
 
     fun sendMessage(scope: CoroutineScope) {
@@ -200,20 +230,40 @@ class CanopyState(
         if (conversation.title.startsWith("New ")) conversation.title = smartTitle(text)
         composerText = ""
 
+        dbRepo?.saveMessage(conversation.id, userMessage)
+        dbRepo?.updateConversationPreview(conversation.id, conversation.preview)
+        dbRepo?.updateConversationTitle(conversation.id, conversation.title)
+
         val workspace = workspaces.first { it.id == conversation.workspaceId }
         val currentPersona = persona
         scope.launch {
-            val response = repository.send(conversation.messages.toList(), text, currentPersona, workspace)
-            val index = conversation.messages.indexOfFirst { it.id == loadingMessage.id }
-            if (index >= 0) {
-                conversation.messages[index] = ChatMessage(
-                    id = loadingMessage.id,
-                    role = Role.Assistant,
-                    text = response,
-                    isLoading = false
-                )
+            try {
+                val response = repository.send(conversation.messages.toList(), text, currentPersona, workspace)
+                val index = conversation.messages.indexOfFirst { it.id == loadingMessage.id }
+                if (index >= 0) {
+                    val responseMessage = ChatMessage(
+                        id = loadingMessage.id,
+                        role = Role.Assistant,
+                        text = response,
+                        isLoading = false
+                    )
+                    conversation.messages[index] = responseMessage
+                    conversation.preview = response.take(72)
+
+                    dbRepo?.saveMessage(conversation.id, responseMessage)
+                    dbRepo?.updateConversationPreview(conversation.id, conversation.preview)
+                }
+            } catch (e: Exception) {
+                val index = conversation.messages.indexOfFirst { it.id == loadingMessage.id }
+                if (index >= 0) {
+                    conversation.messages[index] = ChatMessage(
+                        id = loadingMessage.id,
+                        role = Role.Assistant,
+                        text = "Error: ${e.message ?: "Failed to generate response"}",
+                        isLoading = false
+                    )
+                }
             }
-            conversation.preview = response.take(72)
         }
     }
 
@@ -223,6 +273,35 @@ class CanopyState(
 
     fun dismissNotice() {
         notice = ""
+    }
+
+    private fun loadFromDatabase() {
+        val db = dbRepo
+        if (db == null) {
+            seedConversations()
+            return
+        }
+
+        val loaded = db.loadAllConversations()
+        if (loaded.isEmpty()) {
+            seedConversations()
+            // Persist seeds to database
+            conversations.forEach { conv ->
+                db.saveConversation(conv)
+                conv.messages.forEach { msg -> db.saveMessage(conv.id, msg) }
+            }
+        } else {
+            conversations.addAll(loaded)
+        }
+
+        // Restore settings
+        isDark = db.getSetting("is_dark")?.toBooleanStrictOrNull() ?: true
+        providerName = db.getSetting("provider_name") ?: "Local LLM"
+
+        // Check onboarding
+        if (db.hasCompletedOnboarding()) {
+            screen = Screen.Home
+        }
     }
 
     private fun seedConversations() {
