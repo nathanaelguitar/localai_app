@@ -42,11 +42,11 @@ kotlin {
 }
 
 android {
-    namespace = "com.nathanael.canopy"
+    namespace = "com.nathanaelguitar.canopy"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
 
     defaultConfig {
-        applicationId = "com.nathanael.canopy"
+        applicationId = "com.nathanaelguitar.canopy"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
         versionCode = 1
