@@ -36,24 +36,28 @@ fun App(
     platformPaths: PlatformPaths? = null
 ) {
     val state = remember {
-        if (driverFactory != null && platformPaths != null) {
-            val database = CanopyDatabase(driverFactory.createDriver())
-            val dbRepo = DatabaseRepository(database)
-            val modelManager = ModelManager(platformPaths, dbRepo)
-            modelManager.checkModelStatus()
-            val chatRepo = if (modelManager.status == ModelStatus.Downloaded ||
-                modelManager.status == ModelStatus.Ready
-            ) {
-                LlamaCppChatRepository(modelManager)
+        try {
+            if (driverFactory != null && platformPaths != null) {
+                val database = CanopyDatabase(driverFactory.createDriver())
+                val dbRepo = DatabaseRepository(database)
+                val modelManager = ModelManager(platformPaths, dbRepo)
+                modelManager.checkModelStatus()
+                val chatRepo = if (modelManager.status == ModelStatus.Downloaded ||
+                    modelManager.status == ModelStatus.Ready
+                ) {
+                    LlamaCppChatRepository(modelManager)
+                } else {
+                    DemoChatRepository()
+                }
+                CanopyState(
+                    repository = chatRepo,
+                    dbRepo = dbRepo,
+                    modelManager = modelManager
+                )
             } else {
-                DemoChatRepository()
+                CanopyState()
             }
-            CanopyState(
-                repository = chatRepo,
-                dbRepo = dbRepo,
-                modelManager = modelManager
-            )
-        } else {
+        } catch (_: Exception) {
             CanopyState()
         }
     }

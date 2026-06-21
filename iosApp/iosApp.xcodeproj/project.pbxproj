@@ -297,6 +297,7 @@
 					"$(inherited)",
 					"-framework",
 					ComposeApp,
+					"-lsqlite3",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.nathanaelguitar.canopy;
 				PRODUCT_NAME = Canopy;
@@ -331,6 +332,7 @@
 					"$(inherited)",
 					"-framework",
 					ComposeApp,
+					"-lsqlite3",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.nathanaelguitar.canopy;
 				PRODUCT_NAME = Canopy;

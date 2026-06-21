@@ -117,7 +117,7 @@ class CanopyState(
         if (onboardingStep < 2) {
             onboardingStep++
         } else {
-            dbRepo?.setOnboardingCompleted()
+            persist { dbRepo?.setOnboardingCompleted() }
             if (modelManager != null && modelManager.status == com.nathanael.canopy.data.ModelStatus.NotDownloaded) {
                 screen = Screen.ModelDownload
             } else {
@@ -152,22 +152,24 @@ class CanopyState(
         composerText = ""
         screen = Screen.Chat
 
-        dbRepo?.saveConversation(conversation)
-        dbRepo?.saveMessage(conversation.id, initialMessage)
+        persist {
+            dbRepo?.saveConversation(conversation)
+            dbRepo?.saveMessage(conversation.id, initialMessage)
+        }
     }
 
     fun togglePin(conversation: Conversation? = null) {
         val conv = conversation ?: selectedConversation ?: return
         conv.pinned = !conv.pinned
         showNotice(if (conv.pinned) "Pinned" else "Unpinned")
-        dbRepo?.updateConversationPinned(conv.id, conv.pinned)
+        persist { dbRepo?.updateConversationPinned(conv.id, conv.pinned) }
     }
 
     fun renameSelected() {
         val conversation = selectedConversation ?: return
         conversation.title = smartTitle(conversation.messages.lastOrNull()?.text ?: conversation.title)
         showNotice("Title refreshed")
-        dbRepo?.updateConversationTitle(conversation.id, conversation.title)
+        persist { dbRepo?.updateConversationTitle(conversation.id, conversation.title) }
     }
 
     fun clearSelectedChat() {
@@ -182,9 +184,11 @@ class CanopyState(
         conversation.preview = "Thread cleared"
         showNotice("Thread cleared")
 
-        dbRepo?.clearMessages(conversation.id)
-        dbRepo?.saveMessage(conversation.id, clearMessage)
-        dbRepo?.updateConversationPreview(conversation.id, conversation.preview)
+        persist {
+            dbRepo?.clearMessages(conversation.id)
+            dbRepo?.saveMessage(conversation.id, clearMessage)
+            dbRepo?.updateConversationPreview(conversation.id, conversation.preview)
+        }
     }
 
     fun useWorkflow(workflow: Workflow) {
@@ -208,8 +212,10 @@ class CanopyState(
         apiKeyLabel = if (modelManager?.status == com.nathanael.canopy.data.ModelStatus.Ready) "Model loaded" else "On-device"
         showNotice("Settings saved")
 
-        dbRepo?.setSetting("is_dark", isDark.toString())
-        dbRepo?.setSetting("provider_name", providerName)
+        persist {
+            dbRepo?.setSetting("is_dark", isDark.toString())
+            dbRepo?.setSetting("provider_name", providerName)
+        }
     }
 
     fun sendMessage(scope: CoroutineScope) {
@@ -230,9 +236,11 @@ class CanopyState(
         if (conversation.title.startsWith("New ")) conversation.title = smartTitle(text)
         composerText = ""
 
-        dbRepo?.saveMessage(conversation.id, userMessage)
-        dbRepo?.updateConversationPreview(conversation.id, conversation.preview)
-        dbRepo?.updateConversationTitle(conversation.id, conversation.title)
+        persist {
+            dbRepo?.saveMessage(conversation.id, userMessage)
+            dbRepo?.updateConversationPreview(conversation.id, conversation.preview)
+            dbRepo?.updateConversationTitle(conversation.id, conversation.title)
+        }
 
         val workspace = workspaces.first { it.id == conversation.workspaceId }
         val currentPersona = persona
@@ -250,8 +258,10 @@ class CanopyState(
                     conversation.messages[index] = responseMessage
                     conversation.preview = response.take(72)
 
-                    dbRepo?.saveMessage(conversation.id, responseMessage)
-                    dbRepo?.updateConversationPreview(conversation.id, conversation.preview)
+                    persist {
+                        dbRepo?.saveMessage(conversation.id, responseMessage)
+                        dbRepo?.updateConversationPreview(conversation.id, conversation.preview)
+                    }
                 }
             } catch (e: Exception) {
                 val index = conversation.messages.indexOfFirst { it.id == loadingMessage.id }
@@ -282,25 +292,32 @@ class CanopyState(
             return
         }
 
-        val loaded = db.loadAllConversations()
-        if (loaded.isEmpty()) {
-            seedConversations()
-            // Persist seeds to database
-            conversations.forEach { conv ->
-                db.saveConversation(conv)
-                conv.messages.forEach { msg -> db.saveMessage(conv.id, msg) }
+        try {
+            val loaded = db.loadAllConversations()
+            if (loaded.isEmpty()) {
+                seedConversations()
+                // Persist seeds to database
+                conversations.forEach { conv ->
+                    db.saveConversation(conv)
+                    conv.messages.forEach { msg -> db.saveMessage(conv.id, msg) }
+                }
+            } else {
+                conversations.addAll(loaded)
             }
-        } else {
-            conversations.addAll(loaded)
-        }
 
-        // Restore settings
-        isDark = db.getSetting("is_dark")?.toBooleanStrictOrNull() ?: true
-        providerName = db.getSetting("provider_name") ?: "Local LLM"
+            // Restore settings
+            isDark = db.getSetting("is_dark")?.toBooleanStrictOrNull() ?: true
+            providerName = db.getSetting("provider_name") ?: "Local LLM"
 
-        // Check onboarding
-        if (db.hasCompletedOnboarding()) {
-            screen = Screen.Home
+            // Check onboarding
+            if (db.hasCompletedOnboarding()) {
+                screen = Screen.Home
+            }
+        } catch (_: Exception) {
+            // If database operations fail, fall back to seed data
+            if (conversations.isEmpty()) {
+                seedConversations()
+            }
         }
     }
 
@@ -361,6 +378,14 @@ class CanopyState(
         return cleaned.split(" ").filter { it.isNotBlank() }.take(5).joinToString(" ")
             .replaceFirstChar { it.uppercase() }
             .ifBlank { "Untitled Thread" }
+    }
+
+    private inline fun persist(action: () -> Unit) {
+        try {
+            action()
+        } catch (_: Exception) {
+            showNotice("Saved locally for this session")
+        }
     }
 
     private fun nextId(prefix: String): String = "$prefix-${conversations.sumOf { it.messages.size } + 1}"

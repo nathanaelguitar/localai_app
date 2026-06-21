@@ -9,7 +9,7 @@ import com.nathanael.canopy.platform.PlatformPaths
 fun MainViewController() = ComposeUIViewController(
     configure = {
         parallelRendering = false
-        opaque = true
+        opaque = false
     }
 ) {
     App(

@@ -4,7 +4,10 @@ import ComposeApp
 
 struct ComposeContainerView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        MainViewControllerKt.MainViewController()
+        let controller = MainViewControllerKt.MainViewController()
+        controller.view.isUserInteractionEnabled = true
+        controller.view.isMultipleTouchEnabled = true
+        return controller
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
